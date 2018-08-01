@@ -1,11 +1,18 @@
 package daemon
 
 import (
+	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
+
+type config interface {
+	Start()
+	Stop()
+}
 
 func filter(args []string) []string {
 	var tmp []string = nil
@@ -49,7 +56,34 @@ func check(args []string) bool {
 	return false
 }
 
-func (d *daemon) findArgs() []string {
+func (d *node) start() {
+	num := d.findProcessNum()
+	var ext bool = false
+	var wg sync.WaitGroup
+
+	for {
+		select {
+		case <-d.ctx.Done():
+			ext = true
+		default:
+			if atomic.LoadInt32(&num) == 0 {
+				time.Sleep(time.Second)
+				continue
+			}
+
+			go d.watch(&num, &wg)
+			atomic.AddInt32(&num, -1)
+		}
+
+		if ext {
+			break
+		}
+	}
+
+	wg.Wait()
+}
+
+func (d *node) findArgs() []string {
 	for _, opt := range d.opts {
 		if nil == opt {
 			continue
@@ -63,7 +97,7 @@ func (d *daemon) findArgs() []string {
 	return nil
 }
 
-func (d *daemon) findEnvs() []string {
+func (d *node) findEnvs() []string {
 	for _, opt := range d.opts {
 		if nil == opt {
 			continue
@@ -77,7 +111,7 @@ func (d *daemon) findEnvs() []string {
 	return nil
 }
 
-func (d *daemon) findProcessNum() int32 {
+func (d *node) findProcessNum() int32 {
 	var num int32 = 1
 	for _, opt := range d.opts {
 		if nil == opt {
@@ -95,12 +129,12 @@ func (d *daemon) findProcessNum() int32 {
 	return num
 }
 
-func (d *daemon) watch(wg *sync.WaitGroup) {
-	(*wg).Add(1)
-	defer atomic.AddInt32(&d.num, 1)
-	defer (*wg).Done()
+func (d *node) watch(num *int32, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer atomic.AddInt32(num, 1)
+	defer wg.Done()
 
-	var done chan struct{} = make(chan struct{})
+	var done = make(chan struct{})
 	tick := time.Tick(time.Second)
 	for {
 		select {
@@ -111,7 +145,8 @@ func (d *daemon) watch(wg *sync.WaitGroup) {
 			d.close()
 			return
 		case <-tick:
-			go d.process(done)
+			d.close()
+			d.process(done)
 			tick = time.Tick(time.Hour * 24 * 30)
 		}
 	}
@@ -119,7 +154,7 @@ func (d *daemon) watch(wg *sync.WaitGroup) {
 	return
 }
 
-func (d *daemon) process(done chan struct{}) {
+func (d *node) process(done chan struct{}) {
 	defer close(done)
 
 	d.handle = newProcess(d.ctx, d.name)
@@ -135,8 +170,28 @@ func (d *daemon) process(done chan struct{}) {
 	return
 }
 
-func (d *daemon) close() {
-	if nil != d.handle {
-		d.handle.Stop()
+func (d *node) close() {
+	if nil == d.handle {
+		return
 	}
+
+	if err := d.handle.Stop(); nil != err {
+		d.log.Error(err)
+	}
+}
+
+func (d *daemon) notify() {
+	signal.Notify(d.ch, syscall.SIGSTOP, syscall.SIGQUIT, syscall.SIGKILL, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGCHLD)
+
+	<-d.ch
+
+	for _, node := range d.nodes {
+		if nil != node {
+			node.Stop()
+		}
+	}
+
+	signal.Stop(d.ch)
+
+	return
 }

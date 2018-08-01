@@ -4,12 +4,12 @@ type option interface {
 	Get(key string) interface{}
 }
 
-type node struct {
+type element struct {
 	name  string
 	value interface{}
 }
 
-func (o node) Get(key string) interface{} {
+func (o element) Get(key string) interface{} {
 	if o.name == key {
 		return o.value
 	}
@@ -17,8 +17,8 @@ func (o node) Get(key string) interface{} {
 	return nil
 }
 
-func new(name string, value interface{}) *node {
-	return &node{
+func new(name string, value interface{}) *element {
+	return &element{
 		name:  name,
 		value: value,
 	}

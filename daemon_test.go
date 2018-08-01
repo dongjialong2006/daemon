@@ -17,12 +17,25 @@ func TestDaemon(t *testing.T) {
 
 var _ = Describe("Daemon", func() {
 	Specify("daemon start test", func() {
-		daemon := New(context.Background(), "./bin/sslvpn-agent", WithArgs([]string{"-config", "./bin/config.ini", "-d"}), WithProcessNum(3))
+		// daemon := New(NewNode(context.Background(), "./bin/sslvpn-agent", WithArgs([]string{"-config", "./bin/204.ini", "-d"}), WithProcessNum(1)), NewNode(context.Background(), "./bin/sslvpn-agent", WithArgs([]string{"-config", "./bin/205.ini", "-d"}), WithProcessNum(1)))
+		daemon := New(NewNode(context.Background(), "./bin/sslvpn-agent", WithArgs([]string{"-config", "./bin/204.ini", "-d"}), WithProcessNum(1)))
 		go func() {
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 20)
 			daemon.Stop()
 		}()
 
 		daemon.Start()
 	})
+
+	/*
+		Specify("daemon start test", func() {
+			daemon := NewNode(context.Background(), "./bin/sslvpn-agent", WithArgs([]string{"-config", "./bin/205.ini", "-d"}), WithProcessNum(3))
+			go func() {
+				time.Sleep(time.Second * 5)
+				daemon.Stop()
+			}()
+
+			daemon.Start()
+		})
+	*/
 })
